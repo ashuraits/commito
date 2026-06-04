@@ -74,11 +74,11 @@
     const el = container
     const p = path
     const t = theme
+    isBinary = false
     if (!el || isImage(p)) return
 
     let view: EditorView | null = null
     let cancelled = false
-    isBinary = false
 
     api.readFile(p).then(content => {
       if (cancelled || !el) return
