@@ -38,3 +38,11 @@ type SearchResult struct {
 	Content string `json:"content,omitempty"`
 	Type    string `json:"type"` // file, content
 }
+
+type Commit struct {
+	Hash    string `json:"hash"`
+	Short   string `json:"short"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+	Date    string `json:"date"`
+}

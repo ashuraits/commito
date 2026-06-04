@@ -38,6 +38,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/files", s.handleAllFiles)
 	mux.HandleFunc("/api/search/files", s.handleSearchFiles)
 	mux.HandleFunc("/api/search/content", s.handleSearchContent)
+	mux.HandleFunc("/api/commits", s.handleCommits)
+	mux.HandleFunc("/api/commit-diff", s.handleCommitDiff)
 
 	// serve static frontend
 	static, _ := fs.Sub(s.webFS, "dist")
@@ -202,6 +204,33 @@ func (s *Server) handleRevertAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+func (s *Server) handleCommits(w http.ResponseWriter, r *http.Request) {
+	commits, err := git.GetCommits(s.repoPath, 20)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, commits)
+}
+
+func (s *Server) handleCommitDiff(w http.ResponseWriter, r *http.Request) {
+	hash := r.URL.Query().Get("hash")
+	if hash == "" {
+		http.Error(w, "hash required", 400)
+		return
+	}
+	ctx, _ := strconv.Atoi(r.URL.Query().Get("context"))
+	if ctx == 0 {
+		ctx = 3
+	}
+	files, err := git.GetCommitDiff(s.repoPath, hash, ctx)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, files)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

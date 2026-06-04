@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api } from './lib/api'
-  import type { StatusFile, SearchResult } from './lib/api'
+  import type { StatusFile, SearchResult, Commit, DiffFile } from './lib/api'
   import { appState, toggleTheme } from './lib/state.svelte'
   import DiffTree from './lib/components/DiffTree.svelte'
   import ProjectTree from './lib/components/ProjectTree.svelte'
@@ -9,6 +9,7 @@
   import Editor from './lib/components/Editor.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import ThemeToggle from './lib/components/ThemeToggle.svelte'
+  import CommitLog from './lib/components/CommitLog.svelte'
 
   // apply saved theme
   if (appState.theme === 'light') document.body.classList.add('light')
@@ -188,6 +189,18 @@
 
   let repoName = $state('')
   let sidebarMode = $state<'changes' | 'files'>('changes')
+  let selectedCommit = $state<Commit | null>(null)
+  let commitDiffs = $state<DiffFile[]>([])
+  let commitLoading = $state(false)
+
+  async function selectCommit(c: Commit) {
+    selectedCommit = c
+    appState.selectedFile = null
+    appState.currentDiff = null
+    commitLoading = true
+    commitDiffs = await api.commitDiff(c.hash, appState.diffContext)
+    commitLoading = false
+  }
   let sidebarWidth = $state(parseInt(localStorage.getItem('sidebarWidth') || '224'))
   let resizing = $state(false)
 
@@ -211,6 +224,7 @@
   onMount(async () => {
     const info = await api.info()
     repoName = info.repoPath.split('/').pop() || info.repoPath
+    document.title = `${repoName} — commito`
     loadStatus()
     const interval = setInterval(loadStatus, 3000)
     return () => clearInterval(interval)
@@ -271,12 +285,15 @@
           onclick={() => sidebarMode = 'files'}
         >Files</button>
       </div>
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-y-auto min-h-0">
         {#if sidebarMode === 'changes'}
           <DiffTree files={appState.statusFiles} onSelect={selectFile} onRefresh={loadStatus} />
         {:else}
           <ProjectTree statusFiles={appState.statusFiles} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} />
         {/if}
+      </div>
+      <div class="border-t {appState.theme === 'light' ? 'border-gray-200' : 'border-gray-800'} shrink-0" style="height: 180px; overflow-y: auto">
+        <CommitLog onSelect={selectCommit} />
       </div>
     </div>
 
@@ -302,6 +319,23 @@
       {/if}
       {#if appState.viewMode === 'edit' && appState.selectedFile}
         <Editor path={appState.selectedFile.path} theme={appState.theme} />
+      {:else if selectedCommit}
+        <div class="shrink-0 px-4 py-2 border-b text-[12px] flex items-center gap-2
+          {appState.theme === 'light' ? 'border-gray-200 text-gray-600' : 'border-gray-800 text-gray-400'}">
+          <span class="font-mono text-[11px] {appState.theme === 'light' ? 'text-blue-600' : 'text-blue-400'}">{selectedCommit.short}</span>
+          <span class="font-medium {appState.theme === 'light' ? 'text-gray-800' : 'text-gray-200'}">{selectedCommit.message}</span>
+          <span class="ml-auto">{selectedCommit.author} · {selectedCommit.date}</span>
+          <button class="ml-2 text-[11px] hover:text-gray-300 transition-colors" onclick={() => { selectedCommit = null; commitDiffs = [] }}>✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          {#if commitLoading}
+            <div class="flex items-center justify-center h-full text-[12px] {appState.theme === 'light' ? 'text-gray-400' : 'text-gray-600'}">Loading…</div>
+          {:else}
+            {#each commitDiffs as file (file.path)}
+              <DiffViewer diff={file} loading={false} />
+            {/each}
+          {/if}
+        </div>
       {:else}
         <DiffViewer diff={appState.currentDiff} loading={appState.loading} />
       {/if}

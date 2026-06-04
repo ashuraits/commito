@@ -30,6 +30,14 @@ export interface StatusFile {
   staged: boolean
 }
 
+export interface Commit {
+  hash: string
+  short: string
+  message: string
+  author: string
+  date: string
+}
+
 export interface SearchResult {
   path: string
   line?: number
@@ -91,6 +99,16 @@ export const api = {
 
   async searchContent(q: string): Promise<SearchResult[]> {
     const r = await fetch(`${base}/api/search/content?q=${encodeURIComponent(q)}`)
+    return r.json()
+  },
+
+  async commits(): Promise<Commit[]> {
+    const r = await fetch(`${base}/api/commits`)
+    return r.json()
+  },
+
+  async commitDiff(hash: string, context = 3): Promise<DiffFile[]> {
+    const r = await fetch(`${base}/api/commit-diff?hash=${hash}&context=${context}`)
     return r.json()
   },
 }
