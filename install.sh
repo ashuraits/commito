@@ -3,7 +3,6 @@ set -e
 
 REPO="ashuraits/commito"
 BIN="commito"
-INSTALL_DIR="/usr/local/bin"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
@@ -25,11 +24,23 @@ tmp=$(mktemp)
 curl -fsSL "$url" -o "$tmp"
 chmod +x "$tmp"
 
-if [ -w "$INSTALL_DIR" ]; then
-  mv "$tmp" "${INSTALL_DIR}/${BIN}"
+# prefer ~/.local/bin (no sudo needed), fall back to /usr/local/bin
+if [ -d "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+  INSTALL_DIR="$HOME/.local/bin"
+elif [ -w "/usr/local/bin" ]; then
+  INSTALL_DIR="/usr/local/bin"
 else
+  INSTALL_DIR="/usr/local/bin"
   sudo mv "$tmp" "${INSTALL_DIR}/${BIN}"
+  echo "Installed to ${INSTALL_DIR}/${BIN}"
+  exit 0
 fi
 
+mv "$tmp" "${INSTALL_DIR}/${BIN}"
 echo "Installed to ${INSTALL_DIR}/${BIN}"
-echo "Run: commito"
+
+# remind if ~/.local/bin is not in PATH
+case ":$PATH:" in
+  *":${INSTALL_DIR}:"*) ;;
+  *) echo "Add to your shell: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+esac
