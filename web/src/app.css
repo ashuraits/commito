@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: #0d1117;
+  color: #e6edf3;
+}
+
+body.light {
+  background: #ffffff;
+  color: #1f2328;
+}
+
+/* scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+body.light ::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+}
+
+/* diff colors */
+.diff-add {
+  background: rgba(46, 160, 67, 0.15);
+  color: #7ee787;
+}
+.diff-del {
+  background: rgba(248, 81, 73, 0.15);
+  color: #ff7b72;
+}
+.diff-context {
+  color: #8b949e;
+}
+body.light .diff-add {
+  background: #e6ffed;
+  color: #1a7f37;
+}
+body.light .diff-del {
+  background: #ffebe9;
+  color: #cf222e;
+}
+body.light .diff-context {
+  color: #57606a;
+}
+
+.line-num {
+  color: #3d444d;
+  user-select: none;
+  min-width: 3rem;
+  padding-right: 1rem;
+  text-align: right;
+}
+body.light .line-num {
+  color: #9198a1;
+}
