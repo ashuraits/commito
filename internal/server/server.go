@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
-	"mime"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -116,17 +115,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, err := git.ReadFile(s.repoPath, path)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	ct := mime.TypeByExtension(filepath.Ext(path))
-	if ct == "" {
-		ct = "text/plain"
-	}
-	w.Header().Set("Content-Type", ct)
-	w.Write([]byte(content))
+	http.ServeFile(w, r, filepath.Join(s.repoPath, path))
 }
 
 func (s *Server) handleAllFiles(w http.ResponseWriter, r *http.Request) {
