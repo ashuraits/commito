@@ -42,7 +42,7 @@
     const files = await api.status().catch(() => null)
     if (!files) return
     appState.statusFiles = files
-    api.allFiles().then(f => { if (f) appState.allFiles = f }).catch(() => {})
+    api.allFiles().then(f => { if (f) { appState.allFiles = f.tracked; ignoredPaths = f.ignored } }).catch(() => {})
     const [stagedDiffs, unstagedDiffs] = await Promise.all([
       api.allDiffs(true).catch(() => []),
       api.allDiffs(false).catch(() => []),
@@ -196,6 +196,7 @@
 
   let repoName = $state('')
   let branch = $state('')
+  let ignoredPaths = $state<string[]>([])
   let sidebarMode = $state<'changes' | 'files'>('changes')
   let selectedCommit = $state<Commit | null>(null)
   let commitDiffs = $state<DiffFile[]>([])
@@ -315,7 +316,7 @@
         {#if sidebarMode === 'changes'}
           <DiffTree files={appState.statusFiles} onSelect={selectFile} onRefresh={loadStatus} />
         {:else}
-          <ProjectTree statusFiles={appState.statusFiles} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} />
+          <ProjectTree statusFiles={appState.statusFiles} {ignoredPaths} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} />
         {/if}
       </div>
       <!-- commit log resize handle -->

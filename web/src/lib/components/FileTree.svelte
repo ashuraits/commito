@@ -7,6 +7,7 @@
     name: string
     path: string
     isDir: boolean
+    ignoredDir?: boolean
     children: Map<string, TreeNode>
     status?: string
     data?: unknown
@@ -20,6 +21,7 @@
     onFile: (node: TreeNode) => void
     fileActions?: Snippet<[TreeNode]>
     autoExpanded?: Set<string>
+    loadDir?: (path: string) => Promise<TreeNode[]>
   }
 
   let {
@@ -30,7 +32,28 @@
     onFile,
     fileActions,
     autoExpanded = new Set(),
+    loadDir,
   }: Props = $props()
+
+  let lazyChildren = $state(new Map<string, TreeNode[]>())
+  let lazyLoading = $state(new Set<string>())
+
+  async function toggleIgnoredDir(path: string) {
+    if (userToggled.get(path)) {
+      userToggled.set(path, false)
+      userToggled = new Map(userToggled)
+      return
+    }
+    if (!lazyChildren.has(path) && loadDir) {
+      lazyLoading = new Set(lazyLoading).add(path)
+      const children = await loadDir(path)
+      lazyChildren = new Map(lazyChildren).set(path, children)
+      lazyLoading.delete(path)
+      lazyLoading = new Set(lazyLoading)
+    }
+    userToggled.set(path, true)
+    userToggled = new Map(userToggled)
+  }
 
   let container: HTMLDivElement
   let userToggled = $state(new Map<string, boolean>())
@@ -83,8 +106,9 @@
 
   export function statusColor(s: string | undefined): string {
     switch (s) {
-      case 'added':
-      case 'untracked': return 'text-emerald-300'
+      case 'added':     return 'text-emerald-300'
+      case 'untracked': return 'text-gray-500'
+      case 'ignored':   return 'text-gray-600'
       case 'deleted':   return 'text-red-300'
       case 'renamed':   return 'text-yellow-300'
       case 'modified':  return 'text-blue-300'
@@ -94,8 +118,9 @@
 
   export function statusIcon(s: string | undefined): string {
     switch (s) {
-      case 'added':
-      case 'untracked': return 'A'
+      case 'added':     return 'A'
+      case 'untracked': return '?'
+      case 'ignored':   return '!'
       case 'deleted':   return 'D'
       case 'renamed':   return 'R'
       case 'modified':  return 'M'
@@ -113,8 +138,8 @@
 
   function sortedChildren(node: TreeNode): TreeNode[] {
     return [...node.children.values()].sort((a, b) => {
-      const aDir = a.isDir ? 0 : 1
-      const bDir = b.isDir ? 0 : 1
+      const aDir = (a.isDir || a.ignoredDir) ? 0 : 1
+      const bDir = (b.isDir || b.ignoredDir) ? 0 : 1
       return aDir - bDir || a.name.localeCompare(b.name)
     })
   }
@@ -122,7 +147,32 @@
 
 {#snippet nodeTree(node: TreeNode, depth: number)}
   {#each sortedChildren(node) as child}
-    {#if child.isDir}
+    {#if child.ignoredDir}
+      {@const open = userToggled.get(child.path) ?? false}
+      {@const loading = lazyLoading.has(child.path)}
+      <button
+        class="w-full text-left flex items-center gap-1.5 py-[3px] pr-2 hover:bg-white/5 transition-colors"
+        style="padding-left: {10 + depth * 12}px"
+        data-path={child.path}
+        onclick={() => toggleIgnoredDir(child.path)}
+      >
+        {#if loading}
+          <span class="w-3 h-3 shrink-0 text-gray-600 text-[10px]">…</span>
+        {:else}
+          <svg class="w-3 h-3 shrink-0 transition-transform text-gray-700 {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        {/if}
+        <svg class="w-3.5 h-3.5 shrink-0 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+        </svg>
+        <span class="truncate text-[12px] flex-1 text-gray-600">{child.name}</span>
+        <span class="text-[10px] font-bold text-gray-700">!</span>
+      </button>
+      {#if open && lazyChildren.has(child.path)}
+        {@render lazyTree(lazyChildren.get(child.path)!, depth + 1)}
+      {/if}
+    {:else if child.isDir}
       {@const open = isOpen(child.path)}
       {@const changed = dirStatus(child)}
       <button
@@ -169,6 +219,47 @@
           </div>
         {/if}
       </div>
+    {/if}
+  {/each}
+{/snippet}
+
+{#snippet lazyTree(nodes: TreeNode[], depth: number)}
+  {#each nodes.sort((a, b) => (a.isDir ? 0 : 1) - (b.isDir ? 0 : 1) || a.name.localeCompare(b.name)) as child}
+    {#if child.isDir}
+      {@const open = userToggled.get(child.path) ?? false}
+      <button
+        class="w-full text-left flex items-center gap-1.5 py-[3px] pr-2 hover:bg-white/5 transition-colors"
+        style="padding-left: {10 + depth * 12}px"
+        data-path={child.path}
+        onclick={() => { userToggled.set(child.path, !open); userToggled = new Map(userToggled) }}
+      >
+        <svg class="w-3 h-3 shrink-0 transition-transform text-gray-700 {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+        <svg class="w-3.5 h-3.5 shrink-0 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+        </svg>
+        <span class="truncate text-[12px] flex-1 text-gray-600">{child.name}</span>
+      </button>
+      {#if open}
+        {#await (loadDir ? loadDir(child.path) : Promise.resolve([])) then kids}
+          {@render lazyTree(kids, depth + 1)}
+        {/await}
+      {/if}
+    {:else}
+      {@const isSelected = selectedPath === child.path}
+      <button
+        class="w-full flex items-center gap-1.5 py-[3px] text-left text-gray-600 {isSelected ? 'bg-blue-500/20' : 'hover:bg-white/5'} transition-colors"
+        style="padding-left: {10 + depth * 12}px; padding-right: 8px"
+        data-path={child.path}
+        onclick={() => onFile(child)}
+      >
+        <svg class="w-3.5 h-3.5 shrink-0 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span class="truncate text-[12px] flex-1">{child.name}</span>
+      </button>
     {/if}
   {/each}
 {/snippet}

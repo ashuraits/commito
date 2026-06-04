@@ -36,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/diffs", s.handleAllDiffs)
 	mux.HandleFunc("/api/file", s.handleFile)
 	mux.HandleFunc("/api/files", s.handleAllFiles)
+	mux.HandleFunc("/api/dir", s.handleDir)
 	mux.HandleFunc("/api/search/files", s.handleSearchFiles)
 	mux.HandleFunc("/api/search/content", s.handleSearchContent)
 	mux.HandleFunc("/api/commits", s.handleCommits)
@@ -135,6 +136,16 @@ func (s *Server) handleAllFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, files)
+}
+
+func (s *Server) handleDir(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	entries, err := git.ListDir(s.repoPath, path)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	writeJSON(w, entries)
 }
 
 func (s *Server) handleSearchFiles(w http.ResponseWriter, r *http.Request) {

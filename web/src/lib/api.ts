@@ -58,8 +58,13 @@ export const api = {
     return r.json()
   },
 
-  async allFiles(): Promise<string[]> {
+  async allFiles(): Promise<{ tracked: string[]; ignored: string[] }> {
     const r = await fetch(`${base}/api/files`)
+    return r.json()
+  },
+
+  async listDir(path: string): Promise<{ path: string; isDir: boolean }[]> {
+    const r = await fetch(`${base}/api/dir?path=${encodeURIComponent(path)}`)
     return r.json()
   },
 

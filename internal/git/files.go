@@ -10,7 +10,7 @@ import (
 )
 
 func GetStatus(repoPath string) ([]models.StatusFile, error) {
-	cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain=v1")
+	cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain=v1", "-u")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -57,19 +57,52 @@ func GetStatus(repoPath string) ([]models.StatusFile, error) {
 	return files, nil
 }
 
-func ListAllFiles(repoPath string) ([]string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "ls-files")
-	out, err := cmd.Output()
+type FilesResponse struct {
+	Tracked []string `json:"tracked"`
+	Ignored []string `json:"ignored"`
+}
+
+func ListAllFiles(repoPath string) (*FilesResponse, error) {
+	trackedCmd := exec.Command("git", "-C", repoPath, "ls-files")
+	trackedOut, err := trackedCmd.Output()
 	if err != nil {
 		return nil, err
 	}
-	files := []string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	tracked := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(trackedOut)), "\n") {
 		if line != "" {
-			files = append(files, line)
+			tracked = append(tracked, line)
 		}
 	}
-	return files, nil
+
+	ignoredCmd := exec.Command("git", "-C", repoPath, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
+	ignoredOut, _ := ignoredCmd.Output()
+	ignored := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(ignoredOut)), "\n") {
+		if line != "" {
+			ignored = append(ignored, line)
+		}
+	}
+
+	return &FilesResponse{Tracked: tracked, Ignored: ignored}, nil
+}
+
+type DirEntry struct {
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+}
+
+func ListDir(repoPath, dirPath string) ([]DirEntry, error) {
+	entries, err := os.ReadDir(filepath.Join(repoPath, dirPath))
+	if err != nil {
+		return nil, err
+	}
+	result := []DirEntry{}
+	for _, e := range entries {
+		p := dirPath + "/" + e.Name()
+		result = append(result, DirEntry{Path: p, IsDir: e.IsDir()})
+	}
+	return result, nil
 }
 
 func ReadFile(repoPath, filePath string) (string, error) {

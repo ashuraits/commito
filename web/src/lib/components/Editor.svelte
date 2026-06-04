@@ -35,6 +35,7 @@
   let container: HTMLDivElement | undefined = $state(undefined)
   let saving = $state(false)
   let saved = $state(false)
+  let isBinary = $state(false)
   let saveTimer: ReturnType<typeof setTimeout>
 
   function getLanguage(filePath: string) {
@@ -77,9 +78,11 @@
 
     let view: EditorView | null = null
     let cancelled = false
+    isBinary = false
 
     api.readFile(p).then(content => {
       if (cancelled || !el) return
+      if (content.includes('\0')) { isBinary = true; return }
 
       const lang = getLanguage(p)
       const updateListener = EditorView.updateListener.of((update) => {
@@ -150,6 +153,10 @@
         class="max-w-full max-h-full object-contain shadow-2xl"
         style="image-rendering: pixelated"
       />
+    </div>
+  {:else if isBinary}
+    <div class="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">
+      This file is a binary
     </div>
   {:else}
     <div bind:this={container} class="flex-1 overflow-auto text-[13px] [&_.cm-editor]:h-full [&_.cm-editor]:text-[13px] [&_.cm-editor]:outline-none"></div>
