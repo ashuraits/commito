@@ -11,7 +11,11 @@
     commits = await api.commits()
   }
 
-  $effect(() => { load() })
+  $effect(() => {
+    load()
+    const interval = setInterval(load, 5000)
+    return () => clearInterval(interval)
+  })
 
   function pick(c: Commit) {
     selected = c.hash
