@@ -36,7 +36,7 @@ jobs:
             GOOS="${platform%/*}"
             GOARCH="${platform#*/}"
             output="commito-${GOOS}-${GOARCH}"
-            GOOS=$GOOS GOARCH=$GOARCH go build -o "dist/${output}" .
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-X github.com/alexshuraits/commito/cmd.Version=${GITHUB_REF_NAME}" -o "dist/${output}" .
           done
 
       - name: Create release

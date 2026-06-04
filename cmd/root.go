@@ -67,7 +67,8 @@ func run(cmd *cobra.Command, args []string) error {
 	srv := server.New(repoDir, web.FS)
 	httpServer := &http.Server{Handler: srv.Handler()}
 
-	fmt.Printf("commito → \033]8;;%s\033\\%s\033]8;;\033\\  (repo: %s)\n", url, url, repoDir)
+	fmt.Printf("commito %s → \033]8;;%s\033\\%s\033]8;;\033\\  (repo: %s)\n", Version, url, url, repoDir)
+	checkForUpdate()
 
 	if !noOpen {
 		go func() {
