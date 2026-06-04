@@ -23,7 +23,8 @@
 
   onMount(async () => {
     input?.focus()
-    const paths = await api.allFiles()
+    const { tracked } = await api.allFiles()
+    const paths = tracked
     const dirs = new Set<string>()
     for (const p of paths) {
       const parts = p.split('/')
