@@ -57,6 +57,15 @@ func GetCommitDiff(repoPath, hash string, contextLines int) ([]models.DiffFile, 
 	return files, nil
 }
 
+func CurrentBranch(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

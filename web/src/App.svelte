@@ -10,9 +10,16 @@
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import ThemeToggle from './lib/components/ThemeToggle.svelte'
   import CommitLog from './lib/components/CommitLog.svelte'
+  import CommitDiffViewer from './lib/components/CommitDiffViewer.svelte'
+  import MediaViewer from './lib/components/MediaViewer.svelte'
 
   // apply saved theme
   if (appState.theme === 'light') document.body.classList.add('light')
+
+  const MEDIA_EXT = new Set(['png','jpg','jpeg','gif','webp','svg','bmp','ico','avif','mp4','webm','mov','mkv','avi','mp3','wav','flac','aac','m4a','opus'])
+  function isMedia(path: string) {
+    return MEDIA_EXT.has(path.split('.').pop()?.toLowerCase() ?? '')
+  }
 
   const diffCache = new Map<string, import('./lib/api').DiffFile>()
 
@@ -188,10 +195,28 @@
   }
 
   let repoName = $state('')
+  let branch = $state('')
   let sidebarMode = $state<'changes' | 'files'>('changes')
   let selectedCommit = $state<Commit | null>(null)
   let commitDiffs = $state<DiffFile[]>([])
   let commitLoading = $state(false)
+  let commitLogHeight = $state(parseInt(localStorage.getItem('commitLogHeight') || '90'))
+
+  function startCommitResize(e: MouseEvent) {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = commitLogHeight
+    function onMove(e: MouseEvent) {
+      commitLogHeight = Math.min(500, Math.max(60, startH - (e.clientY - startY)))
+    }
+    function onUp() {
+      localStorage.setItem('commitLogHeight', String(commitLogHeight))
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   async function selectCommit(c: Commit) {
     selectedCommit = c
@@ -224,6 +249,7 @@
   onMount(async () => {
     const info = await api.info()
     repoName = info.repoPath.split('/').pop() || info.repoPath
+    branch = info.branch
     document.title = `${repoName} — commito`
     loadStatus()
     const interval = setInterval(loadStatus, 3000)
@@ -292,7 +318,17 @@
           <ProjectTree statusFiles={appState.statusFiles} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} />
         {/if}
       </div>
-      <div class="border-t {appState.theme === 'light' ? 'border-gray-200' : 'border-gray-800'} shrink-0" style="height: 180px; overflow-y: auto">
+      <!-- commit log resize handle -->
+      <div
+        class="h-[4px] shrink-0 cursor-row-resize relative group border-t {appState.theme === 'light' ? 'border-gray-200' : 'border-gray-800'}"
+        onmousedown={startCommitResize}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize commit log"
+      >
+        <div class="absolute inset-x-0 top-[1px] h-px {appState.theme === 'light' ? 'group-hover:bg-blue-400' : 'group-hover:bg-blue-500'} transition-colors"></div>
+      </div>
+      <div class="shrink-0 overflow-y-auto" style="height: {commitLogHeight}px">
         <CommitLog onSelect={selectCommit} />
       </div>
     </div>
@@ -317,24 +353,23 @@
           <button class="px-2 py-0.5 rounded text-red-400 hover:text-red-300 text-[11px]" onclick={() => revertConfirm = false}>Cancel (Esc)</button>
         </div>
       {/if}
-      {#if appState.viewMode === 'edit' && appState.selectedFile}
+      {#if appState.selectedFile && isMedia(appState.selectedFile.path)}
+        <MediaViewer path={appState.selectedFile.path} />
+      {:else if appState.viewMode === 'edit' && appState.selectedFile}
         <Editor path={appState.selectedFile.path} theme={appState.theme} />
       {:else if selectedCommit}
-        <div class="shrink-0 px-4 py-2 border-b text-[12px] flex items-center gap-2
+        <div class="shrink-0 flex items-center gap-2 px-4 py-2 border-b text-[12px]
           {appState.theme === 'light' ? 'border-gray-200 text-gray-600' : 'border-gray-800 text-gray-400'}">
           <span class="font-mono text-[11px] {appState.theme === 'light' ? 'text-blue-600' : 'text-blue-400'}">{selectedCommit.short}</span>
-          <span class="font-medium {appState.theme === 'light' ? 'text-gray-800' : 'text-gray-200'}">{selectedCommit.message}</span>
-          <span class="ml-auto">{selectedCommit.author} · {selectedCommit.date}</span>
-          <button class="ml-2 text-[11px] hover:text-gray-300 transition-colors" onclick={() => { selectedCommit = null; commitDiffs = [] }}>✕</button>
+          <span class="font-medium {appState.theme === 'light' ? 'text-gray-800' : 'text-gray-200'} truncate">{selectedCommit.message}</span>
+          <span class="ml-auto shrink-0">{selectedCommit.author} · {selectedCommit.date}</span>
+          <button
+            class="shrink-0 ml-1 text-[11px] {appState.theme === 'light' ? 'text-gray-400 hover:text-gray-700' : 'text-gray-600 hover:text-gray-300'} transition-colors"
+            onclick={() => { selectedCommit = null; commitDiffs = [] }}
+          >✕</button>
         </div>
-        <div class="flex-1 overflow-y-auto">
-          {#if commitLoading}
-            <div class="flex items-center justify-center h-full text-[12px] {appState.theme === 'light' ? 'text-gray-400' : 'text-gray-600'}">Loading…</div>
-          {:else}
-            {#each commitDiffs as file (file.path)}
-              <DiffViewer diff={file} loading={false} />
-            {/each}
-          {/if}
+        <div class="flex-1 overflow-hidden">
+          <CommitDiffViewer files={commitDiffs} loading={commitLoading} />
         </div>
       {:else}
         <DiffViewer diff={appState.currentDiff} loading={appState.loading} />
@@ -352,6 +387,15 @@
         <span>{label}</span>
       </span>
     {/snippet}
+    {#if branch}
+      <span class="flex items-center gap-1 {appState.theme === 'light' ? 'text-blue-500' : 'text-blue-400'}">
+        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 3v12m0 0a3 3 0 100 6 3 3 0 000-6zm0 0h6m0-12a3 3 0 100 6 3 3 0 000-6zm0 0v6" />
+        </svg>
+        {branch}
+      </span>
+      <span class="{appState.theme === 'light' ? 'text-gray-300' : 'text-gray-700'}">|</span>
+    {/if}
     {@render key('⌘P', 'search files')}
     {@render key('⌘F', 'search content')}
     {@render key('↑↓', 'navigate')}

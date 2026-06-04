@@ -74,7 +74,7 @@
     if (gap === 0) return false
     if (gap === -1) return true
     const eb = expandedBelow.get(i) ?? 0
-    const ea = i < (diff?.hunks.length ?? 0) - 1 ? (expandedAbove.get(i + 1) ?? 0) : 0
+    const ea = i < (diff?.hunks?.length ?? 0) - 1 ? (expandedAbove.get(i + 1) ?? 0) : 0
     return eb + ea < gap
   }
 
@@ -91,7 +91,7 @@
   async function doExpandBelow(i: number) {
     await loadFile()
     const eb = expandedBelow.get(i) ?? 0
-    const ea = i < (diff?.hunks.length ?? 0) - 1 ? (expandedAbove.get(i + 1) ?? 0) : 0
+    const ea = i < (diff?.hunks?.length ?? 0) - 1 ? (expandedAbove.get(i + 1) ?? 0) : 0
     const gap = gapAfter(i)
     const add = Math.min(STEP, gap === -1 ? STEP : gap - eb - ea)
     if (add > 0) expandedBelow = new Map(expandedBelow).set(i, eb + add)
@@ -137,7 +137,7 @@
       <span class="text-xs text-gray-600">Use <kbd class="px-1.5 py-0.5 rounded border border-gray-700 text-[11px]">⌘P</kbd> to search files</span>
     </div>
 
-  {:else if diff.hunks.length === 0}
+  {:else if !diff.hunks?.length}
     <div class="flex-1 flex items-center justify-center text-gray-500 text-sm">
       No changes in this file
     </div>
@@ -164,7 +164,7 @@
 
     <!-- hunks -->
     <div class="flex-1 overflow-auto font-mono text-[12px]">
-      {#each diff.hunks as hunk, i}
+      {#each (diff.hunks ?? []) as hunk, i}
 
         {#if showExpandAbove(i)}
           <button

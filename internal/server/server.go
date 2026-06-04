@@ -49,7 +49,8 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]string{"repoPath": s.repoPath})
+	branch, _ := git.CurrentBranch(s.repoPath)
+	writeJSON(w, map[string]string{"repoPath": s.repoPath, "branch": branch})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -64,12 +65,13 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	file := r.URL.Query().Get("file")
 	staged := r.URL.Query().Get("staged") == "true"
+	untracked := r.URL.Query().Get("untracked") == "true"
 	ctx, _ := strconv.Atoi(r.URL.Query().Get("context"))
 	if ctx == 0 {
 		ctx = 3
 	}
 
-	diff, err := git.GetDiff(s.repoPath, file, staged, ctx)
+	diff, err := git.GetDiff(s.repoPath, file, staged, untracked, ctx)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

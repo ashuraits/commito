@@ -48,7 +48,7 @@ export interface SearchResult {
 const base = ''
 
 export const api = {
-  async info(): Promise<{ repoPath: string }> {
+  async info(): Promise<{ repoPath: string; branch: string }> {
     const r = await fetch(`${base}/api/info`)
     return r.json()
   },

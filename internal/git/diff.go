@@ -9,7 +9,11 @@ import (
 	"github.com/alexshuraits/commito/internal/models"
 )
 
-func GetDiff(repoPath, filePath string, staged bool, contextLines int) (*models.DiffFile, error) {
+func GetDiff(repoPath, filePath string, staged, untracked bool, contextLines int) (*models.DiffFile, error) {
+	if untracked && filePath != "" {
+		return untrackedDiff(repoPath, filePath, contextLines)
+	}
+
 	args := []string{"-C", repoPath, "diff"}
 	if staged {
 		args = append(args, "--staged")
@@ -32,12 +36,33 @@ func GetDiff(repoPath, filePath string, staged bool, contextLines int) (*models.
 		return &files[0], nil
 	}
 	if filePath != "" {
-		return &models.DiffFile{Path: filePath, Staged: staged}, nil
+		return &models.DiffFile{Path: filePath, Staged: staged, Hunks: []models.Hunk{}}, nil
 	}
 	if len(files) > 0 {
 		return &files[0], nil
 	}
-	return &models.DiffFile{}, nil
+	return &models.DiffFile{Hunks: []models.Hunk{}}, nil
+}
+
+func untrackedDiff(repoPath, filePath string, contextLines int) (*models.DiffFile, error) {
+	args := []string{"-C", repoPath, "diff", "--no-index"}
+	if contextLines > 0 {
+		args = append(args, fmt.Sprintf("-U%d", contextLines))
+	}
+	args = append(args, "--", "/dev/null", filePath)
+
+	cmd := exec.Command("git", args...)
+	out, _ := cmd.Output() // exit code 1 is normal for diff --no-index
+
+	files := parseDiff(string(out))
+	if len(files) > 0 {
+		f := files[0]
+		f.Path = filePath
+		f.Status = "added"
+		f.Staged = false
+		return &f, nil
+	}
+	return &models.DiffFile{Path: filePath, Status: "added", Hunks: []models.Hunk{}}, nil
 }
 
 func GetAllDiffs(repoPath string, staged bool, contextLines int) ([]models.DiffFile, error) {
@@ -158,6 +183,12 @@ func parseDiff(raw string) []models.DiffFile {
 			current.Hunks = append(current.Hunks, *currentHunk)
 		}
 		files = append(files, *current)
+	}
+
+	for i := range files {
+		if files[i].Hunks == nil {
+			files[i].Hunks = []models.Hunk{}
+		}
 	}
 
 	return files

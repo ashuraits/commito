@@ -2,14 +2,7 @@
 
 A local git diff viewer that opens in your browser. Stage, unstage, revert files, and browse diffs — without leaving the terminal workflow.
 
-## Usage
-
-```bash
-commito             # opens browser at http://localhost:7171
-commito -p 8080     # custom port
-commito -d /path    # specify repo directory
-commito --no-open   # don't open browser automatically
-```
+![commito screenshot](screenshot.png)
 
 ## Install
 
@@ -27,6 +20,15 @@ go install github.com/ashuraits/commito@latest
 **Or build from source:**
 ```bash
 make build
+```
+
+## Usage
+
+```bash
+commito             # opens browser at http://localhost:7171
+commito -p 8080     # custom port
+commito -d /path    # specify repo directory
+commito --no-open   # don't open browser automatically
 ```
 
 ## Stack
