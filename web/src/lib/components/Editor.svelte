@@ -74,11 +74,11 @@
     const el = container
     const p = path
     const t = theme
-    isBinary = false
     if (!el || isImage(p)) return
 
     let view: EditorView | null = null
     let cancelled = false
+    isBinary = false
 
     api.readFile(p).then(content => {
       if (cancelled || !el) return
@@ -126,7 +126,7 @@
   })
 </script>
 
-<div class="h-full flex flex-col overflow-hidden">
+<div class="h-full flex flex-col overflow-hidden relative">
   <div class="flex items-center gap-3 px-4 py-2 border-b border-gray-800 shrink-0 bg-gray-900/50 text-[12px]">
     <span class="text-gray-300 font-medium truncate">{path}</span>
     <div class="ml-auto flex items-center gap-2 shrink-0">
@@ -154,11 +154,12 @@
         style="image-rendering: pixelated"
       />
     </div>
-  {:else if isBinary}
-    <div class="flex-1 flex items-center justify-center text-gray-500 text-sm select-none">
-      This file is a binary
-    </div>
   {:else}
-    <div bind:this={container} class="flex-1 overflow-auto text-[13px] [&_.cm-editor]:h-full [&_.cm-editor]:text-[13px] [&_.cm-editor]:outline-none"></div>
+    {#if isBinary}
+      <div class="absolute inset-0 top-[37px] flex items-center justify-center text-gray-500 text-sm select-none pointer-events-none">
+        This file is a binary
+      </div>
+    {/if}
+    <div bind:this={container} class="flex-1 overflow-auto text-[13px] [&_.cm-editor]:h-full [&_.cm-editor]:text-[13px] [&_.cm-editor]:outline-none" class:invisible={isBinary}></div>
   {/if}
 </div>
