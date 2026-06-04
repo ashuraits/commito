@@ -31,6 +31,14 @@ commito -d /path    # specify repo directory
 commito --no-open   # don't open browser automatically
 ```
 
+## Update
+
+```bash
+commito update
+```
+
+Checks for a new release and replaces the binary in place. Restart commito after updating to apply the new version.
+
 ## Stack
 
 - **Backend**: Go + embedded Svelte frontend served over HTTP
