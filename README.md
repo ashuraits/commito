@@ -14,11 +14,17 @@ commito --no-open   # don't open browser automatically
 ## Install
 
 ```bash
-go install github.com/alexshuraits/commito@latest
+curl -fsSL https://raw.githubusercontent.com/ashuraits/commito/main/install.sh | sh
 ```
 
-Or build from source:
+Downloads the binary for your platform and installs it to `/usr/local/bin`.
 
+**Or with Go:**
+```bash
+go install github.com/ashuraits/commito@latest
+```
+
+**Or build from source:**
 ```bash
 make build
 ```
