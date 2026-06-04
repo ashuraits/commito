@@ -129,7 +129,7 @@
   }
 
   function dirStatus(node: TreeNode): string | undefined {
-    if (node.status) return node.status
+    if (node.status && node.status !== 'ignored') return node.status
     for (const child of node.children.values()) {
       const s = dirStatus(child)
       if (s) return s
