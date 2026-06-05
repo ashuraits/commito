@@ -3,6 +3,7 @@
   import { api } from './lib/api'
   import type { StatusFile, SearchResult, Commit, DiffFile } from './lib/api'
   import { appState, toggleTheme } from './lib/state.svelte'
+  import { load as loadState, save as saveState } from './lib/persist'
   import DiffTree from './lib/components/DiffTree.svelte'
   import ProjectTree from './lib/components/ProjectTree.svelte'
   import DiffViewer from './lib/components/DiffViewer.svelte'
@@ -147,12 +148,38 @@
     appState.currentDiff = null
   }
 
+  function isEditorFocused(): boolean {
+    const active = document.activeElement
+    return !!(active && active.closest('.cm-editor'))
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     const meta = e.metaKey || e.ctrlKey
+    const editorFocused = isEditorFocused()
 
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !appState.searchOpen && sidebarMode === 'changes') {
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !appState.searchOpen && sidebarMode === 'changes' && !editorFocused) {
       e.preventDefault()
       navigateFiles(e.key === 'ArrowDown' ? 'down' : 'up')
+      return
+    }
+    if (meta && e.key === 'x' && sidebarMode === 'files' && appState.selectedFile) {
+      e.preventDefault()
+      clipboard = { path: appState.selectedFile.path, op: 'cut' }
+      return
+    }
+    if (meta && e.key === 'c' && sidebarMode === 'files' && appState.selectedFile) {
+      e.preventDefault()
+      clipboard = { path: appState.selectedFile.path, op: 'copy' }
+      return
+    }
+    if (meta && e.key === 'v' && sidebarMode === 'files' && clipboard) {
+      e.preventDefault()
+      const dir = appState.selectedFile
+        ? appState.selectedFile.path.includes('/')
+          ? appState.selectedFile.path.split('/').slice(0, -1).join('/')
+          : ''
+        : ''
+      handlePaste(dir)
       return
     }
     if (meta && e.key === 'p') {
@@ -172,21 +199,21 @@
       toggleTheme()
       return
     }
-    if (e.key === 'e' && !appState.searchOpen && appState.selectedFile && appState.viewMode === 'diff') {
+    if (e.key === 'e' && !appState.searchOpen && appState.selectedFile && appState.viewMode === 'diff' && !editorFocused) {
       appState.viewMode = 'edit'
       return
     }
-    if (e.key === 'd' && !appState.searchOpen && appState.selectedFile && !revertConfirm) {
+    if (e.key === 'd' && !appState.searchOpen && appState.selectedFile && !revertConfirm && !editorFocused) {
       const f = appState.selectedFile
       if (f.status !== 'untracked' && !f.staged) { revertConfirm = true; return }
     }
-    if (revertConfirm) {
+    if (revertConfirm && !editorFocused) {
       if (e.key === 'Enter' || e.key === 'y') { e.preventDefault(); doRevert(); return }
       if (e.key === 'Escape') { revertConfirm = false; return }
     }
     if (e.key === 'Escape') {
       if (appState.searchOpen) { appState.searchOpen = false; return }
-      if (appState.viewMode === 'edit') { appState.viewMode = 'diff'; return }
+      if (appState.viewMode === 'edit' && !editorFocused) { appState.viewMode = 'diff'; return }
     }
     if (e.key === 'r' && meta) {
       e.preventDefault()
@@ -194,14 +221,17 @@
     }
   }
 
+  let repoPath = $state('')
   let repoName = $state('')
   let branch = $state('')
   let ignoredPaths = $state<string[]>([])
   let sidebarMode = $state<'changes' | 'files'>('changes')
+  let clipboard = $state<{ path: string; op: 'cut' | 'copy' } | null>(null)
   let selectedCommit = $state<Commit | null>(null)
   let commitDiffs = $state<DiffFile[]>([])
   let commitLoading = $state(false)
-  let commitLogHeight = $state(parseInt(localStorage.getItem('commitLogHeight') || '90'))
+  let commitLogHeight = $state(90)
+  let expandedDirs = $state<string[]>([])
 
   function startCommitResize(e: MouseEvent) {
     e.preventDefault()
@@ -211,7 +241,6 @@
       commitLogHeight = Math.min(500, Math.max(60, startH - (e.clientY - startY)))
     }
     function onUp() {
-      localStorage.setItem('commitLogHeight', String(commitLogHeight))
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -227,7 +256,7 @@
     commitDiffs = await api.commitDiff(c.hash, appState.diffContext)
     commitLoading = false
   }
-  let sidebarWidth = $state(parseInt(localStorage.getItem('sidebarWidth') || '224'))
+  let sidebarWidth = $state(224)
   let resizing = $state(false)
 
   function startResize(e: MouseEvent) {
@@ -239,7 +268,6 @@
     }
     function onUp() {
       resizing = false
-      localStorage.setItem('sidebarWidth', String(sidebarWidth))
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -247,14 +275,94 @@
     window.addEventListener('mouseup', onUp)
   }
 
-  onMount(async () => {
-    const info = await api.info()
-    repoName = info.repoPath.split('/').pop() || info.repoPath
-    branch = info.branch
-    document.title = `${repoName} — commito`
-    loadStatus()
+  async function handleDelete(path: string) {
+    if (!confirm(`Delete ${path.split('/').pop()}?`)) return
+    await api.deleteFile(path)
+    if (appState.selectedFile?.path === path) {
+      appState.selectedFile = null
+      appState.currentDiff = null
+    }
+    await loadStatus()
+  }
+
+  async function handleRename(oldPath: string, newName: string) {
+    const parts = oldPath.split('/')
+    parts[parts.length - 1] = newName
+    const newPath = parts.join('/')
+    await api.renameFile(oldPath, newPath)
+    if (appState.selectedFile?.path === oldPath) {
+      appState.selectedFile = { ...appState.selectedFile, path: newPath }
+    }
+    await loadStatus()
+  }
+
+  async function handlePaste(targetDir: string) {
+    if (!clipboard) return
+    const name = clipboard.path.split('/').pop()!
+    const to = targetDir ? `${targetDir}/${name}` : name
+    if (clipboard.op === 'cut') {
+      await api.renameFile(clipboard.path, to)
+      if (appState.selectedFile?.path === clipboard.path) {
+        appState.selectedFile = { ...appState.selectedFile, path: to }
+      }
+      clipboard = null
+    } else {
+      await api.copyFile(clipboard.path, to)
+    }
+    await loadStatus()
+  }
+
+  const fileOps = $derived({
+    clipboard,
+    onCut: (path: string) => { clipboard = { path, op: 'cut' } },
+    onCopy: (path: string) => { clipboard = { path, op: 'copy' } },
+    onPaste: handlePaste,
+    onDelete: handleDelete,
+    onRename: handleRename,
+  })
+
+  onMount(() => {
+    ;(async () => {
+      const info = await api.info()
+      repoPath = info.repoPath
+      repoName = repoPath.split('/').pop() || repoPath
+      branch = info.branch
+      document.title = `${repoName} — commito`
+
+      const s = loadState(repoPath)
+      sidebarMode = s.sidebarMode
+      sidebarWidth = s.sidebarWidth
+      commitLogHeight = s.commitLogHeight
+      expandedDirs = s.expandedDirs
+
+      await loadStatus()
+
+      if (s.selectedFilePath) {
+        const f = appState.statusFiles.find(f => f.path === s.selectedFilePath && f.staged === s.selectedFileStaged)
+        if (f) {
+          selectFile(f)
+        } else if (s.viewMode === 'edit') {
+          appState.selectedFile = { path: s.selectedFilePath, status: 'modified', staged: false }
+          appState.viewMode = 'edit'
+        }
+      }
+    })()
+
     const interval = setInterval(loadStatus, 3000)
     return () => clearInterval(interval)
+  })
+
+  $effect(() => {
+    if (!repoPath) return
+    saveState(repoPath, {
+      sidebarMode,
+      sidebarWidth,
+      commitLogHeight,
+      expandedDirs,
+      selectedFilePath: appState.selectedFile?.path ?? null,
+      selectedFileStaged: appState.selectedFile?.staged ?? false,
+      viewMode: appState.viewMode,
+    })
   })
 </script>
 
@@ -316,7 +424,12 @@
         {#if sidebarMode === 'changes'}
           <DiffTree files={appState.statusFiles} onSelect={selectFile} onRefresh={loadStatus} />
         {:else}
-          <ProjectTree statusFiles={appState.statusFiles} {ignoredPaths} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} />
+          <ProjectTree statusFiles={appState.statusFiles} {ignoredPaths} onOpen={openFile} {focusFolder} onFocusDone={() => focusFolder = null} {expandedDirs} {fileOps} onToggle={(path, open) => {
+            const s = new Set(expandedDirs)
+            if (open) s.add(path)
+            else s.delete(path)
+            expandedDirs = [...s]
+          }} />
         {/if}
       </div>
       <!-- commit log resize handle -->

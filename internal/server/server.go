@@ -34,6 +34,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/diff", s.handleDiff)
 	mux.HandleFunc("/api/diffs", s.handleAllDiffs)
 	mux.HandleFunc("/api/file", s.handleFile)
+	mux.HandleFunc("/api/rename", s.handleRename)
+	mux.HandleFunc("/api/copy", s.handleCopy)
 	mux.HandleFunc("/api/files", s.handleAllFiles)
 	mux.HandleFunc("/api/dir", s.handleDir)
 	mux.HandleFunc("/api/search/files", s.handleSearchFiles)
@@ -98,6 +100,15 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		http.Error(w, "path required", 400)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		if err := git.DeleteFile(s.repoPath, path); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.WriteHeader(204)
 		return
 	}
 
@@ -233,6 +244,38 @@ func (s *Server) handleCommitDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, files)
+}
+
+func (s *Server) handleRename(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := git.RenameFile(s.repoPath, body.From, body.To); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (s *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	if err := git.CopyFile(s.repoPath, body.From, body.To); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	w.WriteHeader(204)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

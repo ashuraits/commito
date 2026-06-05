@@ -90,6 +90,18 @@ export const api = {
     })
   },
 
+  async deleteFile(path: string): Promise<void> {
+    await fetch(`${base}/api/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
+  },
+
+  async renameFile(from: string, to: string): Promise<void> {
+    await fetch(`${base}/api/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) })
+  },
+
+  async copyFile(from: string, to: string): Promise<void> {
+    await fetch(`${base}/api/copy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to }) })
+  },
+
   async stage(file: string)      { await fetch(`${base}/api/stage?file=${encodeURIComponent(file)}`, { method: 'POST' }) },
   async unstage(file: string)    { await fetch(`${base}/api/unstage?file=${encodeURIComponent(file)}`, { method: 'POST' }) },
   async revert(file: string)     { await fetch(`${base}/api/revert?file=${encodeURIComponent(file)}`, { method: 'POST' }) },

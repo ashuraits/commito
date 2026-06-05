@@ -3,7 +3,7 @@
   import { api } from '../api'
   import { appState } from '../state.svelte'
   import FileTree from './FileTree.svelte'
-  import type { TreeNode } from './FileTree.svelte'
+  import type { TreeNode, FileOps } from './FileTree.svelte'
 
   interface Props {
     statusFiles: StatusFile[]
@@ -11,9 +11,12 @@
     onOpen: (path: string) => void
     focusFolder?: string | null
     onFocusDone?: () => void
+    expandedDirs?: string[]
+    onToggle?: (path: string, open: boolean) => void
+    fileOps?: FileOps
   }
 
-  let { statusFiles, ignoredPaths, onOpen, focusFolder, onFocusDone }: Props = $props()
+  let { statusFiles, ignoredPaths, onOpen, focusFolder, onFocusDone, expandedDirs = [], onToggle, fileOps }: Props = $props()
 
   const allFiles = $derived(appState.allFiles)
   const loading = $derived(allFiles.length === 0)
@@ -84,9 +87,8 @@
     }))
   }
 
-  // auto-expand folders containing changed files
   const autoExpanded = $derived.by(() => {
-    const set = new Set<string>()
+    const set = new Set<string>(expandedDirs)
     for (const f of statusFiles) {
       const parts = f.path.split('/')
       for (let i = 1; i < parts.length; i++) set.add(parts.slice(0, i).join('/'))
@@ -109,6 +111,8 @@
       {onFocusDone}
       onFile={(n) => onOpen(n.path)}
       {loadDir}
+      {onToggle}
+      {fileOps}
     />
   {/if}
 </div>

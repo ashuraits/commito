@@ -101,7 +101,7 @@
     if (!fileLines || count <= 0) return []
     return Array.from({ length: count }, (_, j) => {
       const n = start + j
-      return { lineNo: n, content: fileLines[n - 1] ?? '' }
+      return { lineNo: n, content: fileLines![n - 1] ?? '' }
     })
   }
 

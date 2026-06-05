@@ -2,6 +2,16 @@
   import { untrack } from 'svelte'
   import type { Snippet } from 'svelte'
   import { appState } from '../state.svelte'
+  import ContextMenu from './ContextMenu.svelte'
+
+  export interface FileOps {
+    clipboard: { path: string; op: 'cut' | 'copy' } | null
+    onCut: (path: string) => void
+    onCopy: (path: string) => void
+    onPaste: (targetDir: string) => void
+    onDelete: (path: string) => void
+    onRename: (oldPath: string, newName: string) => void
+  }
 
   export interface TreeNode {
     name: string
@@ -22,6 +32,8 @@
     fileActions?: Snippet<[TreeNode]>
     autoExpanded?: Set<string>
     loadDir?: (path: string) => Promise<TreeNode[]>
+    onToggle?: (path: string, open: boolean) => void
+    fileOps?: FileOps
   }
 
   let {
@@ -33,6 +45,8 @@
     fileActions,
     autoExpanded = new Set(),
     loadDir,
+    onToggle,
+    fileOps,
   }: Props = $props()
 
   let lazyChildren = $state(new Map<string, TreeNode[]>())
@@ -42,6 +56,9 @@
     if (userToggled.get(path)) {
       userToggled.set(path, false)
       userToggled = new Map(userToggled)
+      lazyChildren.delete(path)
+      lazyChildren = new Map(lazyChildren)
+      onToggle?.(path, false)
       return
     }
     if (!lazyChildren.has(path) && loadDir) {
@@ -53,10 +70,52 @@
     }
     userToggled.set(path, true)
     userToggled = new Map(userToggled)
+    onToggle?.(path, true)
   }
 
   let container: HTMLDivElement
   let userToggled = $state(new Map<string, boolean>())
+  let renamingPath = $state<string | null>(null)
+  let renameValue = $state('')
+  let contextMenu = $state<{ x: number; y: number; node: TreeNode } | null>(null)
+
+  function openContextMenu(e: MouseEvent, node: TreeNode) {
+    if (!fileOps) return
+    e.preventDefault()
+    e.stopPropagation()
+    contextMenu = { x: e.clientX, y: e.clientY, node }
+  }
+
+  function startRename(node: TreeNode) {
+    renamingPath = node.path
+    renameValue = node.name
+  }
+
+  function commitRename(node: TreeNode) {
+    const name = renameValue.trim()
+    if (name && name !== node.name) {
+      fileOps?.onRename(node.path, name)
+    }
+    renamingPath = null
+  }
+
+  function contextMenuItems(node: TreeNode) {
+    const ops = fileOps!
+    const isDir = node.isDir || node.ignoredDir
+    const parentDir = node.path.includes('/') ? node.path.split('/').slice(0, -1).join('/') : ''
+    const pasteDir = isDir ? node.path : parentDir
+    return [
+      { label: 'Rename', shortcut: 'F2', action: () => startRename(node) },
+      { separator: true as const },
+      ...(!isDir ? [
+        { label: 'Cut', shortcut: '⌘X', action: () => ops.onCut(node.path) },
+        { label: 'Copy', shortcut: '⌘C', action: () => ops.onCopy(node.path) },
+      ] : []),
+      { label: 'Paste', shortcut: '⌘V', action: () => ops.onPaste(pasteDir), disabled: !ops.clipboard },
+      { separator: true as const },
+      { label: 'Delete', shortcut: '⌫', action: () => ops.onDelete(node.path), danger: true },
+    ]
+  }
 
   function isOpen(path: string): boolean {
     if (userToggled.has(path)) return userToggled.get(path)!
@@ -64,8 +123,10 @@
   }
 
   function toggle(path: string) {
-    userToggled.set(path, !isOpen(path))
+    const open = !isOpen(path)
+    userToggled.set(path, open)
     userToggled = new Map(userToggled)
+    onToggle?.(path, open)
   }
 
   $effect(() => {
@@ -143,6 +204,20 @@
       return aDir - bDir || a.name.localeCompare(b.name)
     })
   }
+
+  function findNode(node: TreeNode, path: string): TreeNode | null {
+    if (node.path === path) return node
+    for (const child of node.children.values()) {
+      const found = findNode(child, path)
+      if (found) return found
+    }
+    return null
+  }
+
+  function focusInput(node: HTMLInputElement) {
+    node.focus()
+    node.select()
+  }
 </script>
 
 {#snippet nodeTree(node: TreeNode, depth: number)}
@@ -151,23 +226,33 @@
       {@const open = userToggled.get(child.path) ?? false}
       {@const loading = lazyLoading.has(child.path)}
       <button
-        class="w-full text-left flex items-center gap-1.5 py-[3px] pr-2 hover:bg-white/5 transition-colors"
+        class="w-full text-left flex items-center gap-1.5 py-[3px] pr-2 {hoverBg} transition-colors"
         style="padding-left: {10 + depth * 12}px"
         data-path={child.path}
         onclick={() => toggleIgnoredDir(child.path)}
+        oncontextmenu={(e) => openContextMenu(e, child)}
       >
         {#if loading}
-          <span class="w-3 h-3 shrink-0 text-gray-600 text-[10px]">…</span>
+          <span class="w-3 h-3 shrink-0 text-[10px]">…</span>
         {:else}
-          <svg class="w-3 h-3 shrink-0 transition-transform text-gray-700 {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg class="w-3 h-3 shrink-0 transition-transform {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
         {/if}
-        <svg class="w-3.5 h-3.5 shrink-0 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+        <svg class="w-3.5 h-3.5 shrink-0 text-yellow-700" fill="currentColor" viewBox="0 0 20 20">
           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
         </svg>
-        <span class="truncate text-[12px] flex-1 text-gray-600">{child.name}</span>
-        <span class="text-[10px] font-bold text-gray-700">!</span>
+        {#if renamingPath === child.path}
+          <input
+            class="flex-1 min-w-0 bg-transparent border border-blue-500 rounded px-1 text-[12px] outline-none"
+            bind:value={renameValue}
+            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(child) } else if (e.key === 'Escape') { renamingPath = null } }}
+            onblur={() => commitRename(child)}
+            use:focusInput
+          />
+        {:else}
+          <span class="truncate text-[12px] flex-1 text-gray-500">{child.name}</span>
+        {/if}
       </button>
       {#if open && lazyChildren.has(child.path)}
         {@render lazyTree(lazyChildren.get(child.path)!, depth + 1)}
@@ -180,6 +265,7 @@
         style="padding-left: {10 + depth * 12}px"
         data-path={child.path}
         onclick={() => toggle(child.path)}
+        oncontextmenu={(e) => openContextMenu(e, child)}
       >
         <svg class="w-3 h-3 shrink-0 transition-transform {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -187,14 +273,28 @@
         <svg class="w-3.5 h-3.5 shrink-0 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
         </svg>
-        <span class="truncate text-[12px] flex-1 {changed ? statusColor(changed) : textDir}">{child.name}</span>
+        {#if renamingPath === child.path}
+          <input
+            class="flex-1 min-w-0 bg-transparent border border-blue-500 rounded px-1 text-[12px] outline-none"
+            bind:value={renameValue}
+            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(child) } else if (e.key === 'Escape') { renamingPath = null } }}
+            onblur={() => commitRename(child)}
+            use:focusInput
+          />
+        {:else}
+          <span class="truncate text-[12px] flex-1 {changed ? statusColor(changed) : textDir}">{child.name}</span>
+        {/if}
       </button>
       {#if open}
         {@render nodeTree(child, depth + 1)}
       {/if}
     {:else}
       {@const isSelected = selectedPath === child.path}
-      <div class="group relative flex items-center overflow-hidden {isSelected ? 'bg-blue-500/20' : hoverBg} transition-colors">
+      {@const isCut = fileOps?.clipboard?.op === 'cut' && fileOps.clipboard.path === child.path}
+      <div
+        class="group relative flex items-center overflow-hidden {isSelected ? 'bg-blue-500/20' : hoverBg} transition-colors {isCut ? 'opacity-40' : ''}"
+        oncontextmenu={(e) => openContextMenu(e, child)}
+      >
         <button
           class="flex items-center gap-1.5 py-[3px] flex-1 min-w-0 text-left {textFile}"
           style="padding-left: {10 + depth * 12}px; padding-right: {fileActions ? '24px' : '8px'}"
@@ -205,9 +305,19 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <span class="truncate text-[12px] flex-1 {statusColor(child.status)}">{child.name}</span>
+          {#if renamingPath === child.path}
+            <input
+              class="flex-1 min-w-0 bg-transparent border border-blue-500 rounded px-1 text-[12px] outline-none"
+              bind:value={renameValue}
+              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(child) } else if (e.key === 'Escape') { renamingPath = null } }}
+              onblur={() => commitRename(child)}
+              use:focusInput
+            />
+          {:else}
+            <span class="truncate text-[12px] flex-1 {statusColor(child.status)}">{child.name}</span>
+          {/if}
         </button>
-        {#if child.status}
+        {#if child.status && renamingPath !== child.path}
           <span class="absolute right-1.5 text-[10px] font-bold w-4 text-center pointer-events-none
             {fileActions ? 'group-hover:opacity-0' : ''} transition-opacity {statusColor(child.status)}">
             {statusIcon(child.status)}
@@ -232,14 +342,15 @@
         style="padding-left: {10 + depth * 12}px"
         data-path={child.path}
         onclick={() => { userToggled.set(child.path, !open); userToggled = new Map(userToggled) }}
+        oncontextmenu={(e) => openContextMenu(e, child)}
       >
-        <svg class="w-3 h-3 shrink-0 transition-transform text-gray-700 {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg class="w-3 h-3 shrink-0 transition-transform {open ? 'rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
-        <svg class="w-3.5 h-3.5 shrink-0 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+        <svg class="w-3.5 h-3.5 shrink-0 text-yellow-700" fill="currentColor" viewBox="0 0 20 20">
           <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
         </svg>
-        <span class="truncate text-[12px] flex-1 text-gray-600">{child.name}</span>
+        <span class="truncate text-[12px] flex-1 text-gray-500">{child.name}</span>
       </button>
       {#if open}
         {#await (loadDir ? loadDir(child.path) : Promise.resolve([])) then kids}
@@ -248,22 +359,61 @@
       {/if}
     {:else}
       {@const isSelected = selectedPath === child.path}
-      <button
-        class="w-full flex items-center gap-1.5 py-[3px] text-left text-gray-600 {isSelected ? 'bg-blue-500/20' : 'hover:bg-white/5'} transition-colors"
-        style="padding-left: {10 + depth * 12}px; padding-right: 8px"
-        data-path={child.path}
-        onclick={() => onFile(child)}
+      {@const isCut = fileOps?.clipboard?.op === 'cut' && fileOps.clipboard.path === child.path}
+      <div
+        class="group relative flex items-center overflow-hidden {isSelected ? 'bg-blue-500/20' : 'hover:bg-white/5'} transition-colors {isCut ? 'opacity-40' : ''}"
+        oncontextmenu={(e) => openContextMenu(e, child)}
       >
-        <svg class="w-3.5 h-3.5 shrink-0 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <span class="truncate text-[12px] flex-1">{child.name}</span>
-      </button>
+        <button
+          class="w-full flex items-center gap-1.5 py-[3px] text-left text-gray-600 transition-colors"
+          style="padding-left: {10 + depth * 12}px; padding-right: 8px"
+          data-path={child.path}
+          onclick={() => onFile(child)}
+        >
+          <svg class="w-3.5 h-3.5 shrink-0 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          {#if renamingPath === child.path}
+            <input
+              class="flex-1 min-w-0 bg-transparent border border-blue-500 rounded px-1 text-[12px] outline-none"
+              bind:value={renameValue}
+              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitRename(child) } else if (e.key === 'Escape') { renamingPath = null } }}
+              onblur={() => commitRename(child)}
+              use:focusInput
+            />
+          {:else}
+            <span class="truncate text-[12px] flex-1">{child.name}</span>
+          {/if}
+        </button>
+      </div>
     {/if}
   {/each}
 {/snippet}
 
-<div class="py-1 text-[12px]" bind:this={container}>
+<div
+  class="py-1 text-[12px]"
+  bind:this={container}
+  onkeydown={(e) => {
+    if (!fileOps || renamingPath) return
+    if (e.key === 'F2' && selectedPath) {
+      const treeNode = findNode(root, selectedPath)
+      if (treeNode) { e.preventDefault(); startRename(treeNode) }
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPath) {
+      const treeNode = findNode(root, selectedPath)
+      if (treeNode) { e.preventDefault(); fileOps.onDelete(treeNode.path) }
+    }
+  }}
+>
   {@render nodeTree(root, 0)}
 </div>
+
+{#if contextMenu && fileOps}
+  <ContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    items={contextMenuItems(contextMenu.node)}
+    onClose={() => contextMenu = null}
+  />
+{/if}
